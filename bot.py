@@ -1,123 +1,100 @@
 import logging
-import json
 import telebot
-import os
 import requests
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from dotenv import load_dotenv
+import os
 
-# Load sensitive data from environment variables for security
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-YOUR_APPS_SCRIPT_WEB_APP_URL = os.getenv("APPS_SCRIPT_WEB_APP_URL")
+# Load environment variables
+load_dotenv()
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+APPS_SCRIPT_URL = os.getenv('APPS_SCRIPT_WEB_APP_URL')
 
-# Initialize the bot with the token
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode=None)
+# Initialize bot
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+telebot.logger.setLevel(logging.DEBUG)
 
-# Define messages to guide users on income and expense commands
-income_msg = "💰 For Income, provide the details as follows:\n\n" + \
-             "📊 Category:\n" + \
-             "• Salary\n" + \
-             "• Commissions\n" + \
-             "• Loans\n" + \
-             "• Bonus\n\n" + \
-             "💳 Account:\n" + \
-             "• 🏦 Bancolombia\n" + \
-             "• 📱 Nequi\n" + \
-             "• 📱 Daviplata\n" + \
-             "• 💱 Binance\n" + \
-             "• 🏦 Scotiabank\n" + \
-             "• 🏦 Davivienda\n" + \
-             "• 💵 Cash\n\n" + \
-             "📝 Description\n" + \
-             "💲 Amount"
-expenses_msg = "💸 For Expenses, provide the details as follows:\n\n" + \
-               "📊 Category:\n" + \
-               "• 🍪 Cravings\n" + \
-               "• 💳 Debt Paid Off\n" + \
-               "• 🎁 Gifts\n" + \
-               "• 🎭 Going Out\n" + \
-               "• 🛒 Groceries\n" + \
-               "• 📈 Growth\n" + \
-               "• ⚕️ Health\n" + \
-               "• 🏠 House Expenses\n" + \
-               "• 🤷 Incidential Expenses\n" + \
-               "• 💰 Loans\n" + \
-               "• 🧴 Personal Care\n" + \
-               "• 🍽️ Restaurants\n" + \
-               "• 🛍️ Shopping\n" + \
-               "• 📱 Subscriptions\n" + \
-               "• 💱 Transfer\n" + \
-               "• 🚗 Transportation\n" + \
-               "• 🔧 Utilities\n\n" + \
-               "💳 Account:\n" + \
-               "• 🏦 Bancolombia\n" + \
-               "• 📱 Nequi\n" + \
-               "• 📱 Daviplata\n" + \
-               "• 💱 Binance\n" + \
-               "• 🏦 Scotiabank\n" + \
-               "• 🏦 Davivienda\n" + \
-               "• 💵 Cash\n\n" + \
-               "📝 Description\n" + \
-               "💲 Amount\n" + \
-               "📅 Date (optional, type 'today' for today's date)"
+# Define help messages
+INCOME_MSG = """💰 Income Categories:
+• Salary
+• Commissions
+• Loans
+• Bonus
 
-def create_category_keyboard(transaction_type):
-    """Creates category keyboard based on transaction type"""
-    markup = InlineKeyboardMarkup(row_width=2)
-    categories = {
-        'income': ['Salary', 'Commissions', 'Loans', 'Bonus'],
-        'expenses': ['🍪 Cravings', '💳 Debt Paid Off', '🎁 Gifts', '🎭 Going Out', 
-                    '🛒 Groceries', '📈 Growth', '⚕️ Health', '🏠 House Expenses']
-    }
-    buttons = [InlineKeyboardButton(cat, callback_data=f"cat_{cat}") 
-               for cat in categories[transaction_type]]
-    markup.add(*buttons)
-    return markup
+💳 Available Accounts:
+• 🏦 Bancolombia
+• 📱 Nequi
+• 📱 Daviplata
+• 💱 Binance
+• 🏦 Scotiabank
+• 🏦 Davivienda
+• 💵 Cash"""
 
-def create_account_keyboard():
-    """Creates account selection keyboard"""
-    markup = InlineKeyboardMarkup(row_width=2)
-    accounts = ['🏦 Bancolombia', '📱 Nequi', '📱 Daviplata', '💱 Binance', 
-                '🏦 Scotiabank', '🏦 Davivienda', '💵 Cash']
-    buttons = [InlineKeyboardButton(acc, callback_data=f"acc_{acc}") 
-               for acc in accounts]
-    markup.add(*buttons)
-    return markup
+EXPENSES_MSG = """💸 Expense Categories:
+• 🍪 Cravings
+• 💳 Debt Paid Off
+• 🎁 Gifts
+• 🎭 Going Out
+• 🛒 Groceries
+• 📈 Growth
+• ⚕️ Health
+• 🏠 House Expenses
+• 🤷 Incidential Expenses
+• 💰 Loans
+• 🧴 Personal Care
+• 🍽️ Restaurants
+• 🛍️ Shopping
+• 📱 Subscriptions
+• 💱 Transfer
+• 🚗 Transportation
+• 🔧 Utilities"""
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    """
-    Handles the /start and /help commands to provide initial guidance to users.
-    """
-    bot.reply_to(message, "To start adding records to your Spreadsheet, please select /income or /expenses")
+    welcome_msg = """Welcome! 📊
+Use /income or /expense to record a transaction.
+
+Format: Category, Account, Description, Amount
+Example: Salary, Bancolombia, January salary, 1000000"""
+    bot.reply_to(message, welcome_msg)
 
 @bot.message_handler(commands=['income'])
 def handle_income(message):
-    """
-    Handles the /income command by explaining the required format and preparing for user input.
-    """
-    bot.reply_to(message, income_msg)
+    bot.reply_to(message, INCOME_MSG)
     markup = telebot.types.ForceReply(selective=False)
     bot.send_message(
         message.chat.id,
-        "Please provide your income details in the specified format (comma-separated):\nCategory, Account, Description, Amount",
+        "Please provide your income details (comma-separated):\nCategory, Account, Description, Amount",
         reply_markup=markup
     )
-    bot.register_next_step_handler(message, process_income_details)
+    bot.register_next_step_handler(message, process_income)
 
-def process_income_details(message):
-    """
-    Processes the income details provided by the user and sends them to the Apps Script web app.
-    """
+@bot.message_handler(commands=['expense'])
+def handle_expense(message):
+    bot.reply_to(message, EXPENSES_MSG)
+    markup = telebot.types.ForceReply(selective=False)
+    bot.send_message(
+        message.chat.id,
+        "Please provide your expense details (comma-separated):\nCategory, Account, Description, Amount",
+        reply_markup=markup
+    )
+    bot.register_next_step_handler(message, process_expense)
+
+def process_income(message):
     try:
+        # Parse the income details
         details = message.text.split(',')
         if len(details) != 4:
-            raise ValueError("Incorrect number of values provided.")
+            raise ValueError("Incorrect number of values. Please provide: Category, Account, Description, Amount")
+        
         category = details[0].strip()
         account = details[1].strip()
         description = details[2].strip()
-        amount = float(details[3].strip())
+        amount = int(float(details[3].strip().replace(',', '').replace('.', '')))
 
-        # Prepare data to send to the Apps Script web app
+        if amount <= 0:
+            raise ValueError("Amount must be greater than 0")
+
+        # Send to Google Sheets
         data = {
             'function': 'addIncome',
             'category': category,
@@ -126,63 +103,60 @@ def process_income_details(message):
             'amount': amount
         }
 
-        response = requests.post(YOUR_APPS_SCRIPT_WEB_APP_URL, data=data)
+        response = requests.post(APPS_SCRIPT_URL, data=data)
 
         if response.status_code == 200:
-            bot.reply_to(message, "Income record added successfully!")
+            summary = (f"✅ Income recorded successfully!\n\n"
+                      f"Category: {category}\n"
+                      f"Account: {account}\n"
+                      f"Description: {description}\n"
+                      f"Amount: ${amount}")
+            bot.reply_to(message, summary)
         else:
-            bot.reply_to(message, f"Error adding income record. Status code: {response.status_code}")
+            bot.reply_to(message, f"❌ Error adding income. Status code: {response.status_code}")
 
-    except (IndexError, ValueError) as e:
-        bot.reply_to(message, f"Invalid input format. Please provide the details as follows: Category, Account, Description, Amount\nError: {e}")
+    except ValueError as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}\nPlease try again with /income")
 
-@bot.message_handler(commands=['expenses'])
-def handle_expenses(message):
-    """
-    Handles the /expenses command by explaining the required format and preparing for user input.
-    """
-    bot.reply_to(message, expenses_msg)
-    markup = telebot.types.ForceReply(selective=False)
-    bot.send_message(
-        message.chat.id,
-        "Please provide your expense details in the specified format (comma-separated):\nCategory, Account, Description, Amount, Date (optional)",
-        reply_markup=markup
-    )
-    bot.register_next_step_handler(message, process_expense_details)
-
-def process_expense_details(message):
-    """
-    Processes the expense details provided by the user and sends them to the Apps Script web app.
-    """
+def process_expense(message):
     try:
+        # Parse the expense details
         details = message.text.split(',')
-        if len(details) < 4 or len(details) > 5:
-            raise ValueError("Incorrect number of values provided.")
+        if len(details) != 4:
+            raise ValueError("Incorrect number of values. Please provide: Category, Account, Description, Amount")
+        
         category = details[0].strip()
         account = details[1].strip()
         description = details[2].strip()
-        amount = float(details[3].strip())
-        dateInput = details[4].strip() if len(details) == 5 else ''
+        amount = int(float(details[3].strip().replace(',', '').replace('.', '')))
 
-        # Prepare data to send to the Apps Script web app
+        if amount <= 0:
+            raise ValueError("Amount must be greater than 0")
+
+        # Send to Google Sheets
         data = {
             'function': 'addExpense',
             'category': category,
             'account': account,
             'description': description,
             'amount': amount,
-            'dateInput': dateInput
+            'dateInput': 'today'
         }
 
-        response = requests.post(YOUR_APPS_SCRIPT_WEB_APP_URL, data=data)
+        response = requests.post(APPS_SCRIPT_URL, data=data)
 
         if response.status_code == 200:
-            bot.reply_to(message, "Expense record added successfully!")
+            summary = (f"✅ Expense recorded successfully!\n\n"
+                      f"Category: {category}\n"
+                      f"Account: {account}\n"
+                      f"Description: {description}\n"
+                      f"Amount: ${amount}")
+            bot.reply_to(message, summary)
         else:
-            bot.reply_to(message, f"Error adding expense record. Status code: {response.status_code}")
+            bot.reply_to(message, f"❌ Error adding expense. Status code: {response.status_code}")
 
-    except (IndexError, ValueError) as e:
-        bot.reply_to(message, f"Invalid input format. Please provide the details as follows: Category, Account, Description, Amount, Date (optional)\nError: {e}")
+    except ValueError as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}\nPlease try again with /expense")
 
-# Start polling for incoming messages
+print("Bot is running...")
 bot.infinity_polling()

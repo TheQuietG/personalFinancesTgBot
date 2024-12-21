@@ -1,2 +1,6 @@
 .env
 venv/
+code.gs
+telegram_request.gs
+input_handler.py
+__pycache__/
