@@ -3,6 +3,7 @@ import json
 import telebot
 import os
 import requests
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Load sensitive data from environment variables for security
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -12,19 +13,75 @@ YOUR_APPS_SCRIPT_WEB_APP_URL = os.getenv("APPS_SCRIPT_WEB_APP_URL")
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode=None)
 
 # Define messages to guide users on income and expense commands
-income_msg = (
-    "For Income, provide the details as follows: "
-    "Category[Salary, Commissions, Loans, Bonus], "
-    "Account[Bancolombia, Nequi, Daviplata, Binance, Scotiabank, Davivienda, Cash], "
-    "Description, Amount"
-)
-expenses_msg = (
-    "For Expenses, provide the details as follows: "
-    "Category[Groceries, Personal Care, Subscriptions, Utilities, Cravings, House Expenses, Debt Paid Off, Study, "
-    "Incidental Expenses, Health, Gifts], "
-    "Account[Bancolombia, Nequi, Daviplata, Binance, Scotiabank, Davivienda, Cash], "
-    "Description, Amount, Date (optional, type 'today' for today's date)"
-)
+income_msg = "💰 For Income, provide the details as follows:\n\n" + \
+             "📊 Category:\n" + \
+             "• Salary\n" + \
+             "• Commissions\n" + \
+             "• Loans\n" + \
+             "• Bonus\n\n" + \
+             "💳 Account:\n" + \
+             "• 🏦 Bancolombia\n" + \
+             "• 📱 Nequi\n" + \
+             "• 📱 Daviplata\n" + \
+             "• 💱 Binance\n" + \
+             "• 🏦 Scotiabank\n" + \
+             "• 🏦 Davivienda\n" + \
+             "• 💵 Cash\n\n" + \
+             "📝 Description\n" + \
+             "💲 Amount"
+expenses_msg = "💸 For Expenses, provide the details as follows:\n\n" + \
+               "📊 Category:\n" + \
+               "• 🍪 Cravings\n" + \
+               "• 💳 Debt Paid Off\n" + \
+               "• 🎁 Gifts\n" + \
+               "• 🎭 Going Out\n" + \
+               "• 🛒 Groceries\n" + \
+               "• 📈 Growth\n" + \
+               "• ⚕️ Health\n" + \
+               "• 🏠 House Expenses\n" + \
+               "• 🤷 Incidential Expenses\n" + \
+               "• 💰 Loans\n" + \
+               "• 🧴 Personal Care\n" + \
+               "• 🍽️ Restaurants\n" + \
+               "• 🛍️ Shopping\n" + \
+               "• 📱 Subscriptions\n" + \
+               "• 💱 Transfer\n" + \
+               "• 🚗 Transportation\n" + \
+               "• 🔧 Utilities\n\n" + \
+               "💳 Account:\n" + \
+               "• 🏦 Bancolombia\n" + \
+               "• 📱 Nequi\n" + \
+               "• 📱 Daviplata\n" + \
+               "• 💱 Binance\n" + \
+               "• 🏦 Scotiabank\n" + \
+               "• 🏦 Davivienda\n" + \
+               "• 💵 Cash\n\n" + \
+               "📝 Description\n" + \
+               "💲 Amount\n" + \
+               "📅 Date (optional, type 'today' for today's date)"
+
+def create_category_keyboard(transaction_type):
+    """Creates category keyboard based on transaction type"""
+    markup = InlineKeyboardMarkup(row_width=2)
+    categories = {
+        'income': ['Salary', 'Commissions', 'Loans', 'Bonus'],
+        'expenses': ['🍪 Cravings', '💳 Debt Paid Off', '🎁 Gifts', '🎭 Going Out', 
+                    '🛒 Groceries', '📈 Growth', '⚕️ Health', '🏠 House Expenses']
+    }
+    buttons = [InlineKeyboardButton(cat, callback_data=f"cat_{cat}") 
+               for cat in categories[transaction_type]]
+    markup.add(*buttons)
+    return markup
+
+def create_account_keyboard():
+    """Creates account selection keyboard"""
+    markup = InlineKeyboardMarkup(row_width=2)
+    accounts = ['🏦 Bancolombia', '📱 Nequi', '📱 Daviplata', '💱 Binance', 
+                '🏦 Scotiabank', '🏦 Davivienda', '💵 Cash']
+    buttons = [InlineKeyboardButton(acc, callback_data=f"acc_{acc}") 
+               for acc in accounts]
+    markup.add(*buttons)
+    return markup
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
