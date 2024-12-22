@@ -20,7 +20,7 @@ user_data = {}
 def create_category_keyboard(transaction_type):
     markup = InlineKeyboardMarkup(row_width=2)
     categories = {
-        'income': ['Salary', 'Commissions', 'Loans', 'Bonus'],
+        'income': ['💰 Salary', '💼 Commissions', '💵 Loans', '🎁 Bonus'],
         'expense': ['🍪 Cravings', '💳 Debt Paid Off', '🎁 Gifts', '🎭 Going Out', 
                    '🛒 Groceries', '📈 Growth', '⚕️ Health', '🏠 House Expenses',
                    '🤷 Incidential', '💰 Loans', '🧴 Personal Care', '🍽️ Restaurants',
@@ -152,8 +152,8 @@ def handle_amount(message):
         # Enviar a Google Sheets
         data = {
             'function': 'addIncome' if transaction_data['type'] == 'income' else 'addExpense',
-            'category': transaction_data['category'],
-            'account': transaction_data['account'],
+            'category': transaction_data['category'].split(' ', 1)[1] if ' ' in transaction_data['category'] else transaction_data['category'],
+            'account': transaction_data['account'].split(' ', 1)[1] if ' ' in transaction_data['account'] else transaction_data['account'],
             'description': transaction_data['description'],
             'amount': amount,
             'dateInput': 'today'
@@ -222,6 +222,17 @@ def debug_messages(message):
         print(f"Text: {message.text}")
         print(f"Current user_data: {user_data}")
         print("=== DEBUG END ===\n")
+
+@bot.message_handler(commands=['recurring'])
+def manage_recurring(message):
+    markup = InlineKeyboardMarkup(row_width=1)
+    buttons = [
+        InlineKeyboardButton("📱 Add Monthly Subscription", callback_data="recurring_add"),
+        InlineKeyboardButton("📋 View Recurring Expenses", callback_data="recurring_view"),
+        InlineKeyboardButton("✏️ Edit Recurring", callback_data="recurring_edit")
+    ]
+    markup.add(*buttons)
+    bot.send_message(message.chat.id, "Manage Recurring Expenses:", reply_markup=markup)
 
 print("Bot is running...")
 bot.infinity_polling()
