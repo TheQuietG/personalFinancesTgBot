@@ -1,5 +1,6 @@
 import logging
 import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import requests
 from dotenv import load_dotenv
 import os
@@ -13,150 +14,214 @@ APPS_SCRIPT_URL = os.getenv('APPS_SCRIPT_WEB_APP_URL')
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 telebot.logger.setLevel(logging.DEBUG)
 
-# Define help messages
-INCOME_MSG = """💰 Income Categories:
-• Salary
-• Commissions
-• Loans
-• Bonus
+# Store user transaction data
+user_data = {}
 
-💳 Available Accounts:
-• 🏦 Bancolombia
-• 📱 Nequi
-• 📱 Daviplata
-• 💱 Binance
-• 🏦 Scotiabank
-• 🏦 Davivienda
-• 💵 Cash"""
+def create_category_keyboard(transaction_type):
+    markup = InlineKeyboardMarkup(row_width=2)
+    categories = {
+        'income': ['Salary', 'Commissions', 'Loans', 'Bonus'],
+        'expense': ['🍪 Cravings', '💳 Debt Paid Off', '🎁 Gifts', '🎭 Going Out', 
+                   '🛒 Groceries', '📈 Growth', '⚕️ Health', '🏠 House Expenses',
+                   '🤷 Incidential', '💰 Loans', '🧴 Personal Care', '🍽️ Restaurants',
+                   '🛍️ Shopping', '📱 Subscriptions', '💱 Transfer', '🚗 Transport']
+    }
+    buttons = [InlineKeyboardButton(cat, callback_data=f"cat_{cat}") 
+               for cat in categories[transaction_type]]
+    markup.add(*buttons)
+    return markup
 
-EXPENSES_MSG = """💸 Expense Categories:
-• 🍪 Cravings
-• 💳 Debt Paid Off
-• 🎁 Gifts
-• 🎭 Going Out
-• 🛒 Groceries
-• 📈 Growth
-• ⚕️ Health
-• 🏠 House Expenses
-• 🤷 Incidential Expenses
-• 💰 Loans
-• 🧴 Personal Care
-• 🍽️ Restaurants
-• 🛍️ Shopping
-• 📱 Subscriptions
-• 💱 Transfer
-• 🚗 Transportation
-• 🔧 Utilities"""
+def create_account_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    accounts = ['🏦 Bancolombia', '📱 Nequi', '📱 Daviplata', '💱 Binance', 
+                '🏦 Scotiabank', '🏦 Davivienda', '💵 Cash']
+    buttons = [InlineKeyboardButton(acc, callback_data=f"acc_{acc}") 
+               for acc in accounts]
+    markup.add(*buttons)
+    return markup
+
+def show_main_menu(chat_id):
+    markup = InlineKeyboardMarkup(row_width=2)
+    buttons = [
+        InlineKeyboardButton("💰 Income", callback_data="menu_income"),
+        InlineKeyboardButton("💸 Expense", callback_data="menu_expense"),
+        InlineKeyboardButton("📊 Statistics", callback_data="menu_stats"),
+        InlineKeyboardButton("⚙️ Settings", callback_data="menu_settings")
+    ]
+    markup.add(*buttons)
+    bot.send_message(chat_id, "What would you like to do?", reply_markup=markup)
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    welcome_msg = """Welcome! 📊
-Use /income or /expense to record a transaction.
+    welcome_msg = """Welcome to your Personal Finance Bot! 📊
 
-Format: Category, Account, Description, Amount
-Example: Salary, Bancolombia, January salary, 1000000"""
-    bot.reply_to(message, welcome_msg)
+I'll help you record your transactions step by step.
+Just click the buttons below to get started!"""
+    show_main_menu(message.chat.id)
 
-@bot.message_handler(commands=['income'])
-def handle_income(message):
-    bot.reply_to(message, INCOME_MSG)
-    markup = telebot.types.ForceReply(selective=False)
-    bot.send_message(
-        message.chat.id,
-        "Please provide your income details (comma-separated):\nCategory, Account, Description, Amount",
-        reply_markup=markup
+@bot.callback_query_handler(func=lambda call: call.data.startswith('menu_'))
+def handle_menu(call):
+    chat_id = call.message.chat.id
+    action = call.data.replace('menu_', '')
+    
+    if action in ['income', 'expense']:
+        user_data[chat_id] = {'type': action}
+        bot.edit_message_text(
+            f"Please select a {action} category:",
+            chat_id,
+            call.message.message_id,
+            reply_markup=create_category_keyboard(action)
+        )
+    elif action == 'stats':
+        bot.answer_callback_query(call.id, "Statistics feature coming soon!")
+    elif action == 'settings':
+        bot.answer_callback_query(call.id, "Settings feature coming soon!")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
+def handle_category(call):
+    chat_id = call.message.chat.id
+    category = call.data.replace('cat_', '')
+    
+    if chat_id in user_data:
+        user_data[chat_id]['category'] = category
+        bot.edit_message_text(
+            f"Category selected: {category}\nNow select the account:",
+            chat_id,
+            call.message.message_id,
+            reply_markup=create_account_keyboard()
+        )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('acc_'))
+def handle_account(call):
+    chat_id = call.message.chat.id
+    account = call.data.replace('acc_', '')
+    
+    if chat_id in user_data:
+        user_data[chat_id]['account'] = account
+        bot.edit_message_text(
+            f"Account selected: {account}\n\nNow, please enter a description:",
+            chat_id,
+            call.message.message_id
+        )
+
+@bot.message_handler(func=lambda message: (
+    message.chat.id in user_data and 
+    'account' in user_data[message.chat.id] and 
+    'description' not in user_data[message.chat.id]
+))
+def handle_description(message):
+    chat_id = message.chat.id
+    print(f"\n=== DESCRIPTION HANDLER ===")
+    print(f"Chat ID: {chat_id}")
+    print(f"Message: {message.text}")
+    
+    user_data[chat_id]['description'] = message.text
+    bot.reply_to(
+        message, 
+        "Now, please enter the amount:\n\n"
+        "💡 Use whole numbers only, without decimals or commas\n"
+        "✅ Correct: 50000\n"
+        "❌ Incorrect: 50,000 or 50.000"
     )
-    bot.register_next_step_handler(message, process_income)
 
-@bot.message_handler(commands=['expense'])
-def handle_expense(message):
-    bot.reply_to(message, EXPENSES_MSG)
-    markup = telebot.types.ForceReply(selective=False)
-    bot.send_message(
-        message.chat.id,
-        "Please provide your expense details (comma-separated):\nCategory, Account, Description, Amount",
-        reply_markup=markup
-    )
-    bot.register_next_step_handler(message, process_expense)
-
-def process_income(message):
+@bot.message_handler(func=lambda message: (
+    message.chat.id in user_data and 
+    'description' in user_data[message.chat.id] and 
+    'amount' not in user_data[message.chat.id] and 
+    not message.from_user.is_bot and
+    message.text.replace(',', '').replace('.', '').isdigit()  # Verificar que sea número
+))
+def handle_amount(message):
+    chat_id = message.chat.id
+    print(f"\n=== AMOUNT HANDLER ===")
+    print(f"Chat ID: {chat_id}")
+    print(f"Amount input: {message.text}")
+    print(f"Current user_data: {user_data[chat_id]}")
+    
     try:
-        # Parse the income details
-        details = message.text.split(',')
-        if len(details) != 4:
-            raise ValueError("Incorrect number of values. Please provide: Category, Account, Description, Amount")
+        # Convertir a entero
+        amount = int(message.text.replace(',', '').replace('.', ''))
         
-        category = details[0].strip()
-        account = details[1].strip()
-        description = details[2].strip()
-        amount = int(float(details[3].strip().replace(',', '').replace('.', '')))
-
         if amount <= 0:
             raise ValueError("Amount must be greater than 0")
 
-        # Send to Google Sheets
+        # Preparar datos
+        transaction_data = user_data[chat_id].copy()  # Hacer una copia
+        transaction_data['amount'] = amount
+
+        # Enviar a Google Sheets
         data = {
-            'function': 'addIncome',
-            'category': category,
-            'account': account,
-            'description': description,
-            'amount': amount
-        }
-
-        response = requests.post(APPS_SCRIPT_URL, data=data)
-
-        if response.status_code == 200:
-            summary = (f"✅ Income recorded successfully!\n\n"
-                      f"Category: {category}\n"
-                      f"Account: {account}\n"
-                      f"Description: {description}\n"
-                      f"Amount: ${amount}")
-            bot.reply_to(message, summary)
-        else:
-            bot.reply_to(message, f"❌ Error adding income. Status code: {response.status_code}")
-
-    except ValueError as e:
-        bot.reply_to(message, f"❌ Error: {str(e)}\nPlease try again with /income")
-
-def process_expense(message):
-    try:
-        # Parse the expense details
-        details = message.text.split(',')
-        if len(details) != 4:
-            raise ValueError("Incorrect number of values. Please provide: Category, Account, Description, Amount")
-        
-        category = details[0].strip()
-        account = details[1].strip()
-        description = details[2].strip()
-        amount = int(float(details[3].strip().replace(',', '').replace('.', '')))
-
-        if amount <= 0:
-            raise ValueError("Amount must be greater than 0")
-
-        # Send to Google Sheets
-        data = {
-            'function': 'addExpense',
-            'category': category,
-            'account': account,
-            'description': description,
+            'function': 'addIncome' if transaction_data['type'] == 'income' else 'addExpense',
+            'category': transaction_data['category'],
+            'account': transaction_data['account'],
+            'description': transaction_data['description'],
             'amount': amount,
             'dateInput': 'today'
         }
 
+        print(f"Sending to Sheets: {data}")
         response = requests.post(APPS_SCRIPT_URL, data=data)
+        print(f"Response status: {response.status_code}")
 
         if response.status_code == 200:
-            summary = (f"✅ Expense recorded successfully!\n\n"
-                      f"Category: {category}\n"
-                      f"Account: {account}\n"
-                      f"Description: {description}\n"
-                      f"Amount: ${amount}")
+            summary = (f"✅ Transaction recorded successfully!\n\n"
+                      f"Type: {transaction_data['type'].title()}\n"
+                      f"Category: {transaction_data['category']}\n"
+                      f"Account: {transaction_data['account']}\n"
+                      f"Description: {transaction_data['description']}\n"
+                      f"Amount: ${amount:,}")
+            
+            # Importante: Primero limpiar datos, luego enviar mensajes
+            del user_data[chat_id]
+            print("User data cleared")
+            
             bot.reply_to(message, summary)
+            show_main_menu(chat_id)
         else:
-            bot.reply_to(message, f"❌ Error adding expense. Status code: {response.status_code}")
+            del user_data[chat_id]
+            bot.reply_to(message, "❌ Error adding transaction. Please try again with /income or /expense")
+            show_main_menu(chat_id)
 
     except ValueError as e:
-        bot.reply_to(message, f"❌ Error: {str(e)}\nPlease try again with /expense")
+        print(f"ValueError: {str(e)}")
+        bot.reply_to(
+            message,
+            "❌ Invalid amount. Please enter a valid number greater than 0."
+        )
+        del user_data[chat_id]
+        show_main_menu(chat_id)
+
+# Handler de fallback para mensajes que no son números en el paso de amount
+@bot.message_handler(func=lambda message: (
+    message.chat.id in user_data and 
+    'description' in user_data[message.chat.id] and 
+    'amount' not in user_data[message.chat.id] and 
+    not message.from_user.is_bot
+))
+def handle_invalid_amount(message):
+    chat_id = message.chat.id
+    print(f"\n=== INVALID AMOUNT HANDLER ===")
+    print(f"Invalid input: {message.text}")
+    
+    bot.reply_to(
+        message,
+        "❌ Invalid amount format.\n\n"
+        "Please enter only numbers:\n"
+        "✅ Correct: 50000\n"
+        "❌ Incorrect: 50.000 or $50,000 or 50k"
+    )
+
+# Debug handler modificado también
+@bot.message_handler(func=lambda message: True)
+def debug_messages(message):
+    if not message.from_user.is_bot:  # Solo debuggear mensajes de usuarios
+        print(f"\n=== DEBUG MESSAGE ===")
+        print(f"From User: {message.from_user.username}")
+        print(f"Message ID: {message.message_id}")
+        print(f"Chat ID: {message.chat.id}")
+        print(f"Text: {message.text}")
+        print(f"Current user_data: {user_data}")
+        print("=== DEBUG END ===\n")
 
 print("Bot is running...")
 bot.infinity_polling()
