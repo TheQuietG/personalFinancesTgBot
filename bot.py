@@ -40,11 +40,28 @@ def create_account_keyboard():
     markup.add(*buttons)
     return markup
 
+def create_savings_goal_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    goals = ['💰 Emergency Fund', '💻 Technology', '📈 Investment', '📚 Study']
+    buttons = [InlineKeyboardButton(goal, callback_data=f"goal_{goal}") 
+               for goal in goals]
+    markup.add(*buttons)
+    return markup
+
+def create_currency_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    currencies = ['🇨🇴 COP', '🇺🇸 USD']
+    buttons = [InlineKeyboardButton(curr, callback_data=f"curr_{curr}") 
+               for curr in currencies]
+    markup.add(*buttons)
+    return markup
+
 def show_main_menu(chat_id):
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = [
         InlineKeyboardButton("💰 Income", callback_data="menu_income"),
         InlineKeyboardButton("💸 Expense", callback_data="menu_expense"),
+        InlineKeyboardButton("🎯 Savings", callback_data="menu_savings"),
         InlineKeyboardButton("📊 Statistics", callback_data="menu_stats"),
         InlineKeyboardButton("⚙️ Settings", callback_data="menu_settings")
     ]
@@ -71,6 +88,14 @@ def handle_menu(call):
             chat_id,
             call.message.message_id,
             reply_markup=create_category_keyboard(action)
+        )
+    elif action == 'savings':
+        user_data[chat_id] = {'type': 'savings'}
+        bot.edit_message_text(
+            "Please select a savings goal:",
+            chat_id,
+            call.message.message_id,
+            reply_markup=create_savings_goal_keyboard()
         )
     elif action == 'stats':
         bot.answer_callback_query(call.id, "Statistics feature coming soon!")
@@ -124,72 +149,133 @@ def handle_description(message):
         "❌ Incorrect: 50,000 or 50.000"
     )
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith('goal_'))
+def handle_savings_goal(call):
+    chat_id = call.message.chat.id
+    goal = call.data.replace('goal_', '')
+    
+    if chat_id in user_data:
+        user_data[chat_id]['goal'] = goal
+        bot.edit_message_text(
+            f"Goal selected: {goal}\n\n"
+            "Now, select the currency:",
+            chat_id,
+            call.message.message_id,
+            reply_markup=create_currency_keyboard()
+        )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('curr_'))
+def handle_savings_currency(call):
+    chat_id = call.message.chat.id
+    currency = call.data.replace('curr_', '')
+    
+    if chat_id in user_data:
+        user_data[chat_id]['currency'] = currency
+        bot.edit_message_text(
+            f"Currency selected: {currency}\n\n"
+            "Now, please enter the amount:\n\n"
+            "💡 Use whole numbers only, without decimals or commas\n"
+            "✅ Correct: 50000\n"
+            "❌ Incorrect: 50,000 or 50.000",
+            chat_id,
+            call.message.message_id
+        )
+
 @bot.message_handler(func=lambda message: (
     message.chat.id in user_data and 
-    'description' in user_data[message.chat.id] and 
+    (('goal' in user_data[message.chat.id] and 'currency' in user_data[message.chat.id]) or 'description' in user_data[message.chat.id]) and 
     'amount' not in user_data[message.chat.id] and 
     not message.from_user.is_bot and
-    message.text.replace(',', '').replace('.', '').isdigit()  # Verificar que sea número
+    message.text.replace(',', '').replace('.', '').isdigit()
 ))
 def handle_amount(message):
     chat_id = message.chat.id
-    print(f"\n=== AMOUNT HANDLER ===")
-    print(f"Chat ID: {chat_id}")
-    print(f"Amount input: {message.text}")
-    print(f"Current user_data: {user_data[chat_id]}")
-    
     try:
-        # Convertir a entero
         amount = int(message.text.replace(',', '').replace('.', ''))
         
         if amount <= 0:
             raise ValueError("Amount must be greater than 0")
 
-        # Preparar datos
-        transaction_data = user_data[chat_id].copy()  # Hacer una copia
+        transaction_data = user_data[chat_id].copy()
         transaction_data['amount'] = amount
 
-        # Enviar a Google Sheets
-        data = {
-            'function': 'addIncome' if transaction_data['type'] == 'income' else 'addExpense',
-            'category': transaction_data['category'].split(' ', 1)[1] if ' ' in transaction_data['category'] else transaction_data['category'],
-            'account': transaction_data['account'].split(' ', 1)[1] if ' ' in transaction_data['account'] else transaction_data['account'],
-            'description': transaction_data['description'],
-            'amount': amount,
-            'dateInput': 'today'
-        }
-
-        print(f"Sending to Sheets: {data}")
-        response = requests.post(APPS_SCRIPT_URL, data=data)
-        print(f"Response status: {response.status_code}")
-
-        if response.status_code == 200:
-            summary = (f"✅ Transaction recorded successfully!\n\n"
-                      f"Type: {transaction_data['type'].title()}\n"
-                      f"Category: {transaction_data['category']}\n"
-                      f"Account: {transaction_data['account']}\n"
-                      f"Description: {transaction_data['description']}\n"
-                      f"Amount: ${amount:,}")
-            
-            # Importante: Primero limpiar datos, luego enviar mensajes
-            del user_data[chat_id]
-            print("User data cleared")
-            
-            bot.reply_to(message, summary)
-            show_main_menu(chat_id)
+        # Preparar datos según el tipo de transacción
+        if transaction_data['type'] == 'savings':
+            data = {
+                'function': 'addSaving',
+                'goalName': transaction_data['goal'].split(' ', 1)[1] if ' ' in transaction_data['goal'] else transaction_data['goal'],
+                'currency': transaction_data['currency'].split(' ', 1)[1] if ' ' in transaction_data['currency'] else transaction_data['currency'],
+                'amount': amount,
+                'dateInput': 'today'
+            }
         else:
-            del user_data[chat_id]
-            bot.reply_to(message, "❌ Error adding transaction. Please try again with /income or /expense")
-            show_main_menu(chat_id)
+            data = {
+                'function': 'addIncome' if transaction_data['type'] == 'income' else 'addExpense',
+                'category': transaction_data['category'].split(' ', 1)[1] if ' ' in transaction_data['category'] else transaction_data['category'],
+                'account': transaction_data['account'].split(' ', 1)[1] if ' ' in transaction_data['account'] else transaction_data['account'],
+                'description': transaction_data['description'],
+                'amount': amount,
+                'dateInput': 'today'
+            }
+
+        try:
+            response = requests.post(APPS_SCRIPT_URL, data=data)
+            
+            if response.status_code == 200:
+                if transaction_data['type'] == 'savings':
+                    summary = (f"✅ Saving recorded successfully!\n\n"
+                              f"Goal: {transaction_data['goal']}\n"
+                              f"Currency: {transaction_data['currency']}\n"
+                              f"Amount: {amount:,}")
+                else:
+                    summary = (f"✅ Transaction recorded successfully!\n\n"
+                              f"Type: {transaction_data['type'].title()}\n"
+                              f"Category: {transaction_data['category']}\n"
+                              f"Account: {transaction_data['account']}\n"
+                              f"Description: {transaction_data['description']}\n"
+                              f"Amount: ${amount:,}")
+                
+                del user_data[chat_id]
+                bot.reply_to(message, summary)
+                show_main_menu(chat_id)
+            else:
+                error_message = f"❌ Error: Could not save the transaction\n\nStatus Code: {response.status_code}"
+                
+                if response.text:
+                    try:
+                        error_data = response.json()
+                        if 'error' in error_data:
+                            error_message += f"\nDetails: {error_data['error']}"
+                    except:
+                        error_message += f"\nDetails: {response.text}"
+                
+                error_message += "\n\nPlease try again or contact support if the problem persists."
+                bot.reply_to(message, error_message)
+                
+        except requests.exceptions.RequestException as e:
+            error_message = (
+                "❌ Network Error\n\n"
+                f"Could not connect to the server: {str(e)}\n\n"
+                "Please check your internet connection and try again."
+            )
+            bot.reply_to(message, error_message)
 
     except ValueError as e:
-        print(f"ValueError: {str(e)}")
-        bot.reply_to(
-            message,
-            "❌ Invalid amount. Please enter a valid number greater than 0."
+        error_message = (
+            "❌ Invalid Amount\n\n"
+            "Please enter a valid positive number:\n"
+            "✅ Correct: 50000\n"
+            "❌ Incorrect: -50000, 0, or non-numeric values"
         )
-        del user_data[chat_id]
-        show_main_menu(chat_id)
+        bot.reply_to(message, error_message)
+    except Exception as e:
+        error_message = (
+            "❌ Unexpected Error\n\n"
+            f"An error occurred: {str(e)}\n\n"
+            "Please try again or contact support if the problem persists."
+        )
+        bot.reply_to(message, error_message)
+        logging.error(f"Unexpected error for chat_id {chat_id}: {str(e)}")
 
 # Handler de fallback para mensajes que no son números en el paso de amount
 @bot.message_handler(func=lambda message: (
