@@ -54,3 +54,12 @@ Once data is received, it’s sent to an Apps Script web endpoint (`YOUR_APPS_SC
    ```bash
    git clone https://github.com/YourUser/YourRepo.git
    cd YourRepo
+
+```
+
+### Income Categories 💰
+- Salary
+- Commissions
+- Loans
+- Bonus
+- Payments

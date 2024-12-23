@@ -20,7 +20,7 @@ user_data = {}
 def create_category_keyboard(transaction_type):
     markup = InlineKeyboardMarkup(row_width=2)
     categories = {
-        'income': ['💰 Salary', '💼 Commissions', '💵 Loans', '🎁 Bonus'],
+        'income': ['💰 Salary', '💼 Commissions', '💵 Loans', '🎁 Bonus', '💸 Payments'],
         'expense': ['🍪 Cravings', '💳 Debt Paid Off', '🎁 Gifts', '🎭 Going Out', 
                    '🛒 Groceries', '📈 Growth', '⚕️ Health', '🏠 House Expenses',
                    '🤷 Incidential', '💰 Loans', '🧴 Personal Care', '🍽️ Restaurants',
@@ -34,7 +34,7 @@ def create_category_keyboard(transaction_type):
 def create_account_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     accounts = ['🏦 Bancolombia', '📱 Nequi', '📱 Daviplata', '💱 Binance', 
-                '🏦 Scotiabank', '🏦 Davivienda', '💵 Cash']
+                '🏦 Scotiabank', '🏦 Davivienda', '💵 Cash', '💸 Payments']
     buttons = [InlineKeyboardButton(acc, callback_data=f"acc_{acc}") 
                for acc in accounts]
     markup.add(*buttons)
