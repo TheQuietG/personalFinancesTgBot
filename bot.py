@@ -4,11 +4,30 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import requests
 from dotenv import load_dotenv
 import os
+import json
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 APPS_SCRIPT_URL = os.getenv('APPS_SCRIPT_WEB_APP_URL')
+
+# Crear directorio de logs si no existe
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+# Configurar el logging
+log_filename = f'logs/bot_session_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename, encoding='utf-8'),
+        logging.StreamHandler()  # Mantener los logs en consola también
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Initialize bot
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -16,6 +35,12 @@ telebot.logger.setLevel(logging.DEBUG)
 
 # Store user transaction data
 user_data = {}
+
+def clear_user_data(chat_id):
+    """Clear user data for a specific chat_id"""
+    if chat_id in user_data:
+        user_data.pop(chat_id)
+        logger.debug(f"Cleared user data for chat_id {chat_id}")
 
 def create_category_keyboard(transaction_type):
     markup = InlineKeyboardMarkup(row_width=2)
@@ -199,14 +224,13 @@ def handle_amount(message):
         transaction_data = user_data[chat_id].copy()
         transaction_data['amount'] = amount
 
-        # Preparar datos según el tipo de transacción
+        # Preparar datos según el tipo de transacción - sin emojis para Apps Script
         if transaction_data['type'] == 'savings':
             data = {
                 'function': 'addSaving',
                 'goalName': transaction_data['goal'].split(' ', 1)[1] if ' ' in transaction_data['goal'] else transaction_data['goal'],
                 'currency': transaction_data['currency'].split(' ', 1)[1] if ' ' in transaction_data['currency'] else transaction_data['currency'],
-                'amount': amount,
-                'dateInput': 'today'
+                'amount': str(amount)
             }
         else:
             data = {
@@ -214,51 +238,60 @@ def handle_amount(message):
                 'category': transaction_data['category'].split(' ', 1)[1] if ' ' in transaction_data['category'] else transaction_data['category'],
                 'account': transaction_data['account'].split(' ', 1)[1] if ' ' in transaction_data['account'] else transaction_data['account'],
                 'description': transaction_data['description'],
-                'amount': amount,
-                'dateInput': 'today'
+                'amount': str(amount)
             }
 
-        try:
-            response = requests.post(APPS_SCRIPT_URL, data=data)
-            
-            if response.status_code == 200:
-                if transaction_data['type'] == 'savings':
-                    summary = (f"✅ Saving recorded successfully!\n\n"
-                              f"Goal: {transaction_data['goal']}\n"
-                              f"Currency: {transaction_data['currency']}\n"
-                              f"Amount: {amount:,}")
+        logger.info("\n=== SENDING REQUEST ===")
+        logger.info(f"URL: {APPS_SCRIPT_URL}")
+        logger.info(f"Headers: {{'Content-Type': 'application/json'}}")
+        logger.info(f"Data: {json.dumps(data, indent=2)}")
+
+        response = requests.post(
+            APPS_SCRIPT_URL,
+            json=data,
+            headers={'Content-Type': 'application/json'}
+        )
+
+        logger.info("\n=== RECEIVED RESPONSE ===")
+        logger.info(f"Status Code: {response.status_code}")
+        logger.info(f"Response Headers: {dict(response.headers)}")
+        logger.info(f"Response Content: {response.text}")
+        logger.info("=== END OF REQUEST ===\n")
+
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                if result.get('status') == 'success':
+                    # Mensaje de éxito con emojis y formato de moneda
+                    success_message = "✅ Transaction added successfully!\n\n"
+                    if transaction_data['type'] == 'savings':
+                        success_message += f"🎯 Goal: {transaction_data['goal']}\n"
+                        success_message += f"💱 Currency: {transaction_data['currency']}\n"
+                        # Formato de moneda según el tipo
+                        currency_symbol = "USD $" if "USD" in transaction_data['currency'] else "COP $"
+                        success_message += f"💵 Amount: {currency_symbol}{amount:,}"
+                    else:
+                        success_message += f"📂 Category: {transaction_data['category']}\n"
+                        success_message += f"🏦 Account: {transaction_data['account']}\n"
+                        success_message += f"📝 Description: {transaction_data['description']}\n"
+                        success_message += f"💵 Amount: COP ${amount:,}"
+                    
+                    bot.reply_to(message, success_message)
+                    clear_user_data(chat_id)
                 else:
-                    summary = (f"✅ Transaction recorded successfully!\n\n"
-                              f"Type: {transaction_data['type'].title()}\n"
-                              f"Category: {transaction_data['category']}\n"
-                              f"Account: {transaction_data['account']}\n"
-                              f"Description: {transaction_data['description']}\n"
-                              f"Amount: ${amount:,}")
-                
-                del user_data[chat_id]
-                bot.reply_to(message, summary)
-                show_main_menu(chat_id)
-            else:
-                error_message = f"❌ Error: Could not save the transaction\n\nStatus Code: {response.status_code}"
-                
-                if response.text:
-                    try:
-                        error_data = response.json()
-                        if 'error' in error_data:
-                            error_message += f"\nDetails: {error_data['error']}"
-                    except:
-                        error_message += f"\nDetails: {response.text}"
-                
-                error_message += "\n\nPlease try again or contact support if the problem persists."
+                    error_message = f"❌ Error: {result.get('message', 'Unknown error')}"
+                    bot.reply_to(message, error_message)
+                    logger.error(f"API Error: {error_message}")
+            except json.JSONDecodeError as e:
+                error_message = "❌ Error: Invalid response from server"
                 bot.reply_to(message, error_message)
-                
-        except requests.exceptions.RequestException as e:
-            error_message = (
-                "❌ Network Error\n\n"
-                f"Could not connect to the server: {str(e)}\n\n"
-                "Please check your internet connection and try again."
-            )
+                logger.error(f"JSON Decode Error: {str(e)}\nResponse content: {response.text}")
+        else:
+            error_message = f"❌ Server Error (Status Code: {response.status_code})"
+            if response.text:
+                error_message += f"\nDetails: {response.text}"
             bot.reply_to(message, error_message)
+            logger.error(f"HTTP Error: {error_message}")
 
     except ValueError as e:
         error_message = (
@@ -268,14 +301,12 @@ def handle_amount(message):
             "❌ Incorrect: -50000, 0, or non-numeric values"
         )
         bot.reply_to(message, error_message)
+        logger.error(f"ValueError for chat_id {chat_id}: {str(e)}")
     except Exception as e:
-        error_message = (
-            "❌ Unexpected Error\n\n"
-            f"An error occurred: {str(e)}\n\n"
-            "Please try again or contact support if the problem persists."
-        )
+        error_message = f"❌ Unexpected Error: {str(e)}"
         bot.reply_to(message, error_message)
-        logging.error(f"Unexpected error for chat_id {chat_id}: {str(e)}")
+        logger.error(f"Unexpected error for chat_id {chat_id}: {str(e)}")
+        logger.exception("Full traceback:")
 
 # Handler de fallback para mensajes que no son números en el paso de amount
 @bot.message_handler(func=lambda message: (
@@ -320,5 +351,14 @@ def manage_recurring(message):
     markup.add(*buttons)
     bot.send_message(message.chat.id, "Manage Recurring Expenses:", reply_markup=markup)
 
+# Al inicio del bot
+logger.info("=== BOT STARTED ===")
+logger.info(f"Logging to file: {log_filename}")
+
 print("Bot is running...")
 bot.infinity_polling()
+
+# Al final del archivo
+if __name__ == "__main__":
+    logger.info("Starting bot polling...")
+    bot.polling(none_stop=True)
