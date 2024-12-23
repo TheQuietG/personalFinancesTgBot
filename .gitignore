@@ -4,3 +4,4 @@ code.gs
 telegram_request.gs
 input_handler.py
 __pycache__/
+logs/

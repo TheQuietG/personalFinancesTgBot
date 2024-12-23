@@ -1,0 +1,16 @@
+# Bot y API
+pyTelegramBotAPI==4.14.1
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Base de datos
+SQLAlchemy==2.0.25
+
+# Utilidades
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Para desarrollo (opcional)
+black==24.1.1  # formateador de código
+flake8==7.0.0  # linter
+pytest==7.4.4  # testing
